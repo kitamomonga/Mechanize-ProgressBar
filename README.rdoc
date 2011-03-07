@@ -1,19 +1,109 @@
 = mechanize-progressbar
 
-Description goes here.
+Mechanize-Progressbar provides ProgressBar when you use Mechanize#get.
+HTTP response only. HTTP requests are not supported.
+Mechanize-Progressbar sets proc object to Mechanize#pre_connect_hooks.
 
-== Contributing to mechanize-progressbar
- 
-* Check out the latest master to make sure the feature hasn't been implemented or the bug hasn't been fixed yet
-* Check out the issue tracker to make sure someone already hasn't requested it and/or contributed it
-* Fork the project
-* Start a feature/bugfix branch
-* Commit and push until you are happy with your contribution
-* Make sure to add tests for it. This is important so I don't break it in a future version unintentionally.
-* Please try not to mess with the Rakefile, version, or history. If you want to have your own version, or is otherwise necessary, that is fine, but please isolate to its own commit so I can cherry-pick around it.
+== you can do
 
-== Copyright
+    require 'mechanize'
+    require 'mechanize/progressbar'
+    agent = Mechanize.new
+    agent.progressbar{ agent.get(large_file) }
+    
+    http://host/large_file.zip
+    15% |ooooooo                        | 135.2KB  21.9KB/s ETA:  00:00:10
 
-Copyright (c) 2011 kitamomonga. See LICENSE.txt for
-further details.
+== Requirements
 
+- Ruby 1.8.6 or later
+- recent Rubygems
+- Mechanize gem
+- ProgressBar gem
+
+== USAGE
+
+Get file in Mechanize#progressbar block.
+
+    require 'mechanize'
+    require 'mechanize/progressbar'
+    agent = Mechanize.new
+    agent.progressbar{ agent.get(large_file) }
+
+Link#click also works.
+
+    agent = Mechanize.new
+    agent.get(some_page)
+    agent.progressbar do
+      agent.page.link_with(:text => 'download here').click
+    end
+
+If you want to modify ProgressBar object, set options.
+
+    pbar = ProgressBar.new(title, total, out)
+    pbar.format = format
+    pbar.format_arguments = format_arguments
+
+is
+
+    agent = Mechanize.new
+    agent.progressbar(
+      :title => title,
+      :total => total,
+      :out => out,
+      :format => format,
+      :format_arguments => format_arguments
+    ){ agent.get(large_file) }
+
+Mechanize-Progressbar prints the URL to $stderr before progressbar.
+
+    agent.progressbar{ agent.get(large_file) }
+    
+    http://uri.host/large_file.zip
+    15% |ooooo                           | 135.2KB  21.9KB/s ETA:  00:00:10
+
+If you do not want the "two-line mode", set (:single => true).
+
+    agent.progressbar(:single => true){ agent.get(large_file) }
+    
+    uri.host:   15% |ooo                 | 135.2KB  21.9KB/s ETA:  00:00:10
+
+When you use Mechanize Logger and same output(i.e, agent.log=Logger.new($stdout)),
+set (:suppress_logger => true).
+
+    agent.log = Logger.new($stdout)
+    agent.progressbar{ agent.get(large_file) }
+    
+    http://uri.host/large_file.zip
+    D, [...] DEBUG -- : Read 1000 bytes
+    10% |ooo                             | 100.2KB  21.9KB/s ETA:  00:00:11
+    D, [...] DEBUG -- : Read 2000 bytes
+    15% |ooooo                           | 200.1KB  21.9KB/s ETA:  00:00:08
+    ...
+
+    agent.log = Logger.new($stdout)
+    agent.progressbar(:suppress_logger => true){ agent.get(large_file) }
+    
+    http://uri.host/large_file.zip
+    100% |ooooooooooooooooooooooooooooooo| 1024.0KB  21.9KB/s Time:  00:00:20
+    D, [...] DEBUG -- : Read 102400 bytes
+
+LARGE FILE DOWNLOAD NOTE:
+Mechanize keeps all the got files as String object.
+When you get the five 100MB files, Mechanize uses at least 500MB memory.
+
+If you wish to run Mechanize with minimum memory usage, try
+    agent.max_history = 1
+
+
+== Licence
+
+GNU GENERAL PUBLIC LICENSE Version 2
+
+alike Mechanize.
+
+== Author
+
+kitamomonga
+kitamomonga@gmail.com
+http://d.hatena.ne.jp/kitamomonga/ (Japanese)
