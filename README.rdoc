@@ -1,16 +1,16 @@
 = mechanize-progressbar
 
-Mechanize-Progressbar provides ProgressBar when you use Mechanize#get.
+Mechanize-Progressbar provides ProgressBar when you use Mechanize#get/Page#click.
 HTTP response only. HTTP requests are not supported.
-Mechanize-Progressbar sets proc object to Mechanize#pre_connect_hooks.
 
 == you can do
-
+script:
     require 'mechanize'
     require 'mechanize/progressbar'
     agent = Mechanize.new
     agent.progressbar{ agent.get(large_file) }
-    
+
+$stderr output:
     http://host/large_file.zip
     15% |ooooooo                        | 135.2KB  21.9KB/s ETA:  00:00:10
 
@@ -18,7 +18,7 @@ Mechanize-Progressbar sets proc object to Mechanize#pre_connect_hooks.
 
 - Ruby 1.8.6 or later
 - recent Rubygems
-- Mechanize gem
+- Mechanize gem (1.0.0, 2.0)
 - ProgressBar gem
 
 == USAGE
@@ -38,57 +38,53 @@ Link#click also works.
       agent.page.link_with(:text => 'download here').click
     end
 
-If you want to modify ProgressBar object, set options.
+=== config ProgressBar
 
-    pbar = ProgressBar.new(title, total, out)
-    pbar.format = format
-    pbar.format_arguments = format_arguments
+If you want to modify ProgressBar object, set options to argument.
+
+    pbar = ProgressBar.new(@title, @total, @out)
+    pbar.format = @format
+    pbar.format_arguments = @format_arguments
 
 is
 
     agent = Mechanize.new
     agent.progressbar(
-      :title => title,
-      :total => total,
-      :out => out,
-      :format => format,
-      :format_arguments => format_arguments
+      :title => @title,
+      :total => @total,
+      :out => @out,
+      :format => @format,
+      :format_arguments => @format_arguments
     ){ agent.get(large_file) }
 
 Mechanize-Progressbar prints the URL to $stderr before progressbar.
 
+script:
     agent.progressbar{ agent.get(large_file) }
-    
+output:
     http://uri.host/large_file.zip
     15% |ooooo                           | 135.2KB  21.9KB/s ETA:  00:00:10
 
 If you do not want the "two-line mode", set (:single => true).
 
+script:
     agent.progressbar(:single => true){ agent.get(large_file) }
-    
+output:
     uri.host:   15% |ooo                 | 135.2KB  21.9KB/s ETA:  00:00:10
 
-When you use Mechanize Logger and same output(i.e, agent.log=Logger.new($stdout)),
-set (:suppress_logger => true).
+When Mechanize Logger output is same to ProgressBar (i.e, agent.log=Logger.new($stderr)),
+Mechanize::ProgressBar stops showing socket read log.
 
-    agent.log = Logger.new($stdout)
+script:
+    agent.log = Logger.new($stderr)
     agent.progressbar{ agent.get(large_file) }
-    
-    http://uri.host/large_file.zip
-    D, [...] DEBUG -- : Read 1000 bytes
-    10% |ooo                             | 100.2KB  21.9KB/s ETA:  00:00:11
-    D, [...] DEBUG -- : Read 2000 bytes
-    15% |ooooo                           | 200.1KB  21.9KB/s ETA:  00:00:08
-    ...
-
-    agent.log = Logger.new($stdout)
-    agent.progressbar(:suppress_logger => true){ agent.get(large_file) }
-    
+output:
     http://uri.host/large_file.zip
     100% |ooooooooooooooooooooooooooooooo| 1024.0KB  21.9KB/s Time:  00:00:20
     D, [...] DEBUG -- : Read 102400 bytes
 
-LARGE FILE DOWNLOAD NOTE:
+
+== LARGE FILE DOWNLOAD NOTE
 Mechanize keeps all the got files as String object.
 When you get the five 100MB files, Mechanize uses at least 500MB memory.
 
@@ -98,7 +94,7 @@ If you wish to run Mechanize with minimum memory usage, try
 
 == Licence
 
-GNU GENERAL PUBLIC LICENSE Version 2
+MIT
 
 alike Mechanize.
 

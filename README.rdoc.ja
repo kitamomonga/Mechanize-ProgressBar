@@ -1,0 +1,155 @@
+= mechanize-progressbar
+
+Mechanize-Progressbar は Mechanize で get や click したときにテキストの進捗バーを表示します（ProgressBar gem 使用）。
+サーバからファイルを取得するときのみ有効です。GET や POST の送信進行状況を表示させることはできません。
+
+== できること
+script:
+    require 'mechanize'
+    require 'mechanize/progressbar'
+    agent = Mechanize.new
+    agent.progressbar{ agent.get(large_file) }
+
+$stderr output:
+    http://host/large_file.zip
+    15% |ooooooo                        | 135.2KB  21.9KB/s ETA:  00:00:10
+
+== 必要なもの
+
+- Ruby 1.8.6 か 1.8.7、1.9.1、1.9.2。jruby では未テスト
+- 最近の Rubygems
+- gem ライブラリ Mechanize (1.0.0 と 2.0 に対応)
+- gem ライブラリ ProgressBar
+
+== USAGE
+
+Mechanize#progressbar のブロック内でファイルを get してください。
+
+    require 'mechanize'
+    require 'mechanize/progressbar'
+    agent = Mechanize.new
+    agent.progressbar{ agent.get(large_file) }
+
+リンクをクリックしても動作します。
+
+    agent = Mechanize.new
+    agent.get(some_page)
+    agent.progressbar do
+      agent.page.link_with(:text => 'download here').click
+    end
+
+ProgressBar の設定を変更したい場合は、キーワード風引数で指定します。
+ProgressBar で以下のように設定するはずだった場合は、
+
+    pbar = ProgressBar.new(@title, @total, @out)
+    pbar.format = @format
+    pbar.format_arguments = @format_arguments
+
+次のように引数に書くことになります。
+今のところ設定は保存されず、ブロックを作成するたびに引数を指定する必要があります。
+
+    agent = Mechanize.new
+    agent.progressbar(
+      :title => @title,
+      :total => @total,
+      :out => @out,
+      :format => @format,
+      :format_arguments => @format_arguments
+    ){ agent.get(large_file) }
+
+=== {:title => @title}
+
+タイトルを指定します。デフォルトの 2行表示では1行目に、1行表示モード（:single）では左端に表示されます。
+ProgressBar 側の制限で、1行表示モードでは半角15文字までしか表示されません。
+1行モード時には ProgressBar#initialize の第 1引数に渡されます。ProgressBar のマニュアルを参照してください。
+
+=== {:total => @total}
+
+最終的なバイト数を指定します。
+ProgressBar#initialize の第 2引数に渡されます。ProgressBar のマニュアルを参照してください。
+デフォルトではレスポンスヘッダの Content-Length を利用しています。
+
+=== {:out => @out}
+
+出力先の IO オブジェクトを指定します。デフォルトでは $stderr です。
+ProgressBar#initialize の第 3引数に渡されます。ProgressBar のマニュアルを参照してください。
+
+=== {:format => @format}
+
+ProgressBar のフォーマットを指定しますその1です。
+ProgressBar#format= のマニュアルを参照してください。
+
+=== {:format_arguments => @format_arguments}
+
+ProgressBar のフォーマットを指定しますその2です。
+ProgressBar#format_arguments= のマニュアルを参照してください。
+
+=== {:reversed => true/false}
+
+ProgressBar の代わりに ReversedProgressBar を使用します。
+バーの増加表示方向が逆になります。
+
+=== {:file_transfer_mode => true/false}
+
+ProgressBar をファイル転送用の表示にします。デフォルトで true です。
+ProgressBar#file_transfer_mode= のマニュアルを参照してください。
+
+=== {:single => true/false}
+
+1行モードの可否を設定します。デフォルトでは false で、2行表示になっています。
+
+Mechanize-Progressbar は取得する URL を適当に表示してからプログレスバーを表示しますが、
+
+script:
+    agent.progressbar{ agent.get(large_file) }
+output:
+    http://uri.host/large_file.zip
+    15% |ooooo                           | 135.2KB  21.9KB/s ETA:  00:00:10
+
+この部分が2行になってるのが嫌だという場合は、引数に (:single => true) を指定します。
+1行モードだと、ProgressBar gem の本来の表示になります。
+
+script:
+    agent.progressbar(:single => true){ agent.get(large_file) }
+output:
+    uri.host:   15% |ooo                 | 135.2KB  21.9KB/s ETA:  00:00:10
+
+=== {:suppress_logger => true/false}
+
+Mechanize に Logger が設定されていて、その出力先が ProgressBar と同じだった場合（デフォルトでは$stderr）、
+"Read 1234 bytes" というような逐次のデータ取得表示は自動で抑制されます。
+
+script:
+    agent.log = Logger.new($stderr)
+    agent.progressbar{ agent.get(large_file) }
+output:
+    http://uri.host/large_file.zip
+    100% |ooooooooooooooooooooooooooooooo| 1024.0KB  21.9KB/s Time:  00:00:20
+    D, [...] DEBUG -- : Read 102400 bytes
+
+最終的なファイルサイズのみ表示されています。
+これを出力先が異なっても行ないたいという場合は、(:suppress_logger => true) としてください。
+Logger の出力に逐次表示が含まれなくなります（あまり使い出がないとは思うのですが）。
+
+(:suppress_logger => false) とすると、出力先が被っていた場合はブログレスバーがぐちゃぐちゃになります。
+おすすめできません。
+
+== ファイル取得時のメモリ使用仕様
+
+Mechanize は取得した全ファイルを履歴兼キャッシュとしてスクリプト終了まで保持し続けています（GCの対象にはなりません）。
+100MBのファイルを5個取得したら、使用メモリは最低でも500MBになっています。
+Mechanize の仕様なのでどうにもならないのですが、履歴数を最低の 1にすることで軽減することはできます。
+
+    agent.max_history = 1
+
+== Licence
+
+Mechanize がないと動作しないので、 Mechanize と同様に MIT ライセンスです。
+
+== Author
+
+kitamomonga
+kitamomonga@gmail.com
+
+きたももんががきたん。
+http://d.hatena.ne.jp/kitamomonga/
