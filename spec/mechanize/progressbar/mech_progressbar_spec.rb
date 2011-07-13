@@ -1,6 +1,6 @@
 require File.expand_path(File.dirname(__FILE__) + '../../../spec_helper')
 
-### NOTE: On MechanizeProgressBarAPI - "accepts agent as agent" spec, we swap $stderr.
+### NOTE: we swap $stderr on MechanizeProgressBarAPI - "accepts agent as agent" spec
 
 describe MechanizeProgressBarAPI do
 
@@ -13,6 +13,7 @@ describe MechanizeProgressBarAPI do
   end
 
   before :each do
+    WebMock.reset!
     WebMock.stub_request(:get, @url).to_return(@headers_and_body)
   end
 
@@ -32,40 +33,55 @@ describe MechanizeProgressBarAPI do
       @agent = Mechanize.new
       @output = StringIO.new
     end
+
     it "accepts Hash as ProgressBar option" do
       @agent.progressbar(:out => @output){@agent.get(@url)}
-      progressbar.should work_fine
-    end
-
-    it "accepts agent as agent" do
-      o = Object.new
-      o.extend(MechanizeProgressBarAPI)
-      backup = $stderr
-      $stderr = @output
-      o.progressbar(@agent){@agent.get(@url)}
-      $stderr = backup
-      progressbar.should work_fine
-    end
-
-    it "accepts (agent, pbar_opt) arguments" do
-      o = Object.new
-      o.extend(MechanizeProgressBarAPI)
-      o.progressbar(@agent, :out => @output){@agent.get(@url)}
       progressbar.should work_fine
     end
 
     it "with block" do
       @agent.progressbar(:out => @output){@agent.get(@url)}
       progressbar.should work_fine
-      @agent.pre_connect_hooks.should be_empty
-      @agent.post_connect_hooks.should be_empty
     end
 
-    it "method chain leaves a proc on post_connect_hooks" do
-      @agent.progressbar(:out => @output).get(@url)
-      progressbar.should work_fine
-      @agent.pre_connect_hooks.should be_empty
-      @agent.post_connect_hooks.should_not be_empty
+    describe "included/extended use" do
+      it "accepts agent as agent" do
+        o = Object.new
+        o.extend(MechanizeProgressBarAPI)
+        backup = $stderr
+        $stderr = @output
+        o.progressbar(@agent){@agent.get(@url)}
+        $stderr = backup
+        progressbar.should work_fine
+      end
+
+      it "accepts (agent, pbar_opt) arguments" do
+        o = Object.new
+        o.extend(MechanizeProgressBarAPI)
+        o.progressbar(@agent, :out => @output){@agent.get(@url)}
+        progressbar.should work_fine
+      end
+    end
+
+    describe "method chain" do
+      it "works fine" do
+        @agent.progressbar(:out => @output).get(@url)
+        progressbar.should work_fine
+      end
+
+      it "options to method chain are reseted next time" do
+        out1 = StringIO.new
+        @agent.progressbar(:out => out1, :title => 'AAAA').get(@url)
+        out1.string.should match(/AAAA/)
+
+        out2 = StringIO.new
+        @agent.progressbar(:out => out2, :title => 'BBBB').get(@url)
+        out2.string.should match(/BBBB/)
+
+        out3 = StringIO.new
+        @agent.progressbar(:out => out3).get(@url)
+        out3.string.should_not match(/BBBB/)
+      end
     end
 
     it "default ProgressBar title is uri.host" do
@@ -102,10 +118,6 @@ describe MechanizeProgressBarAPI do
       progressbar.should match(/999B/)
     end
 
-    it "default ProgressBar out is $stderr" do
-      # TODO:
-    end
-
     it "agent.progressbar(:out => io) changes output to io object" do
       @agent.progressbar(:out => @output){
         lambda{@agent.get(@url)}.should_not raise_error
@@ -130,62 +142,111 @@ describe MechanizeProgressBarAPI do
       progressbar.should be_include(stat)
     end
 
-    it "when HTTP status error occurs in Mechanize, rescue unregister" do
+    it "when Exception occurs before fetching, raise it and show nothing" do
+      WebMock.stub_request(:get, @url).to_timeout
+      if Mechanize::VERSION == '1.0.0'
+        error = Timeout::Error
+        error_message = /execution expired/
+      else
+        error = Net::HTTP::Persistent::Error
+        error_message = /execution expired - Timeout::Error/
+      end
+
+      @agent.progressbar(:output => @output) do
+        lambda{ @agent.get(@url) }.should raise_error(error, error_message)
+      end
+      progressbar.should be_empty
+    end
+
+    ## TODO: it requires a webmock adapter for net-http-persistent
+    # it "when HTTP status error occurs in reading, raise it and show nothing" do
+    #   WebMock.stub_request(:get, @url).to_raise(Errno::ECONNREFUSED)
+    #   lambda{
+    #     @agent.progressbar{ @agent.get(@url)}
+    #   }.should raise_error(Net::HTTP::Persistent::Error) # raises ECONNREFUSED
+    # end
+
+    it "when HTTP status error occurs after fetching, raise it and show nothing" do
       url_404 = 'http://host/404'
       WebMock.stub_request(:get, url_404).to_return(:status => ['404', 'Not Found'])
       lambda{
         @agent.progressbar(:output => @output) do
-          @agent.pre_connect_hooks[0].should be_kind_of(Proc)
           @agent.get(url_404)
         end
       }.should raise_error(Mechanize::ResponseCodeError)
-      @agent.pre_connect_hooks.should be_empty
       progressbar.should be_empty
     end
 
-    it "when Exception occurs in Mechanize, rescue unregister" do
-      WebMock.stub_request(:get, @url).to_timeout
-      @agent.progressbar(:output => @output) do
-        @agent.pre_connect_hooks[0].should be_kind_of(Proc)
-        lambda{@agent.get(@url)}.should raise_error(Timeout::Error)
+    describe "with Logger" do
+
+      before :all do
+        require 'logger'
       end
-      @agent.pre_connect_hooks.should be_empty
-      progressbar.should be_empty
+
+      before :each do
+        @out = StringIO.new
+        @agent.log = Logger.new(@out)
+      end
+
+      def progressbar
+        @out.string
+      end
+
+      it "{:suppress_logger => true} does nothing when no logger" do
+        @agent.log = nil
+        @agent.progressbar(:output => @out, :suppress_logger => false){@agent.get(@url)}
+        progressbar.should work_fine
+        progressbar.should_not match(/Read 1000 bytes/)
+      end
+
+      it "When Logger and ProgressBar have same outputs, Log output is suppressed " do
+        @agent.progressbar(:output => @out){@agent.get(@url)}
+        if Mechanize::VERSION == '1.0.0'
+          re = /^I, \[.+^http:\/\/.+?Time: \d\d:\d\d:\d\d\nD, /m
+          # matches:
+          ### D, [2011-06-29...
+          ### http://uri.host//uri.path...
+          ### ...
+          ### (showing progressbar)
+          ### ...
+          ### ...1000B 195.7KB/s Time: 00:00:00
+          ### D, [2011-06-29...
+          progressbar.should match(re)
+        else
+          re = /^D, \[.+^http:\/\/.+?Time: \d\d:\d\d:\d\d\n\Z/m
+          # matches:
+          ### D, [2011-06-29...
+          ### http://uri.host//uri.path...
+          ### ...
+          ### (showing progressbar)
+          ### ...
+          ### ...1000B 195.7KB/s Time: 00:00:00\n
+          progressbar.should match(re)
+        end
+      end
+
+      it "When Logger output is diffrent from ProgressBar one, Mechanize shows Log as usual" do
+        logger_out = StringIO.new
+        @agent.log = Logger.new(logger_out)
+        @agent.progressbar(:output => @out){@agent.get(@url)}
+
+        progressbar.should work_fine
+        progressbar.should_not match(/Read 1000 bytes/)
+        logger_out.string.should match(/Read 1000 bytes/)
+      end
+
+      it "{:suppress_logger => false} crashes ProgressBar output" do
+        @agent.progressbar(:output => @out, :suppress_logger => false){@agent.get(@url)}
+
+        re = /D, \[.+?\] DEBUG -- : Read 1000 bytes \(1000 total\)\r?\n100% \|o+\|\s+1000B/
+
+        # matches:
+        ### D, [(date+time)] DEBUG -- : Read 1000 bytes
+        ### 100% |ooooooooooooooooooooooooooooooooooooooo|   1000B nnn.nKB/s Time: 00:00:00
+        progressbar.should match(re)
+      end
+
     end
-
-    it "Mechanize Logger output to $stderr crashes ProgressBar" do
-      require 'logger'
-      out = StringIO.new
-      @agent.log = Logger.new(out)
-      @agent.progressbar(:output => out){@agent.get(@url)}
-
-      # matches:
-      ### http://uri.host/uri.path
-      ### D, [(date+time)] DEBUG -- : Read 1000 bytes ETA:  --:--:--
-      ### 100% |ooooooooooooooooooooooooooooooooooooooo|   1000B nnn.nKB/s Time: 00:00:00
-      re = /http:\/\/uri\.host\/uri\.path\s+D, \[.+?\] DEBUG -- : Read 1000 bytes\s+100% |o+|\s+1000B/
-      out.string.should match(re)
-    end
-
-    it "(:suppress_logger => true) make ProgressBar and Mechanize Logger output independent" do
-      require 'logger'
-      out = StringIO.new
-      @agent.log = Logger.new(out)
-      @agent.progressbar(:output => out, :suppress_logger => true){@agent.get(@url)}
-
-      # matches:
-      ### request-header: keep-alive => 300\n
-      ### http://uri.host/uri.path
-      before_progressbar = /request-header: (.+?) => (.+?)\s+http:\/\/uri\.host\/uri\.path/
-      out.string.should match(before_progressbar)
-
-      # matches:
-      ### 100% |ooooooooooooooooooooooooooooooooooooooo|   1000B 151.5KB/s Time: 00:00:00
-      ### D, [(date+time)] DEBUG -- : Read 1000 bytes
-      after_progressbar = /100%\s*\|o+\|\s+1000B (.+?)B\/s Time: \d\d:\d\d:\d\d\s+D, \[.+?\] DEBUG -- : Read 1000 bytes/
-      out.string.should match(after_progressbar)
-    end
-
   end
 end
 

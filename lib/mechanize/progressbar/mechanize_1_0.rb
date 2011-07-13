@@ -1,3 +1,4 @@
+# is for Mechanize 1.0.0 only
 class Mechanize   # has 6 added/modified lines
   include MechanizeProgressBarAPI # (1of6)a
   class Chain
@@ -6,18 +7,17 @@ class Mechanize   # has 6 added/modified lines
         params[:response] = @response
         body = StringIO.new
         total = 0
-        pbar = MechanizeProgressBar.build(params) if MechanizeProgressBar.http_ok?(params) # (2of6)a
+        mpbar = MechanizeProgressBar.new(params[:agent], params[:request], params[:response]) # (2of6)a
         @response.read_body { |part|
           total += part.length
           body.write(part)
-#         Mechanize.log.debug("Read #{total} bytes") if Mechanize.log
-          Mechanize.log.debug("Read #{total} bytes") if Mechanize.log && !MechanizeProgressBar.suppress_logger?(params) # (3of6)m
-          pbar.inc(part.length) if MechanizeProgressBar.http_ok?(params) # (4of6)a
+          # Mechanize.log.debug("Read #{total} bytes") if Mechanize.log
+          Mechanize.log.debug("Read #{total} bytes") if Mechanize.log && !mpbar.suppress_logger? # (3of6)m
+          mpbar.inc(part.length) # (4of6)a
         }
         body.rewind
-        pbar.finish if MechanizeProgressBar.http_ok?(params) # (5of6)a
-        Mechanize.log.debug("Read #{total} bytes") if Mechanize.log && MechanizeProgressBar.suppress_logger?(params) # (6of6)a
-
+        mpbar.finish # (5of6)a
+        Mechanize.log.debug("Read #{total} bytes") if Mechanize.log && !mpbar.suppress_logger? # (6of6)a
         res_klass = Net::HTTPResponse::CODE_TO_OBJ[@response.code.to_s]
         raise ResponseCodeError.new(@response) unless res_klass
 
