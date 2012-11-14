@@ -2,7 +2,7 @@ class Mechanize
   include MechanizeProgressBarAPI # (1of7)a
   class HTTP
     class Agent
-      def response_read response, request
+      def response_read response, request, uri=nil
         body_io = StringIO.new
         body_io.set_encoding Encoding::BINARY if body_io.respond_to? :set_encoding
         total = 0
