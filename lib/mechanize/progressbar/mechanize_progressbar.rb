@@ -85,5 +85,4 @@ class MechanizeProgressBar # :nodoc:
     scheme = request.class.to_s =~ /https/i ? 'https' : 'http'
     URI.parse("#{scheme}://#{request['Host']}#{request.path}").to_s
   end
-
 end
